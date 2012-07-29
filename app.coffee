@@ -3,7 +3,13 @@ argv = require('optimist').argv
 dynamo = require 'dynamo'
 
 # =======================================================================
-# 
+
+STATUS =
+  OK : 0
+  NOT_FOUND : 1
+  AWS_ERROR : 2
+  BAD_DATA : 3
+  BAD_INPUT : 4
 
 # =======================================================================
 
@@ -19,7 +25,7 @@ class Server
 
   #-----------------------------------------
 
-  db : () -> @_db.get(@_tab)
+  table : () -> @_db.get(@_tab)
 
   #-----------------------------------------
   
@@ -42,20 +48,23 @@ class Server
     key = req.params.id
     data = req.body.data
     err = null
-    rc = 1
+    rc = STATUS.OK
     
     if not key? or not val?
       err = "need 'id' and 'val' keys"
+      rc = STATUS.BAD_INPUT
     else if key.length < 12
       err = "needed a key of sufficient length"
+      rc = STATUS.BAD_INPUT
     else
       @_cache[key] = data
       await
         @_db.get(@_tab).put({key : id, data : data}).save defer err, data
       if err
+        rc = STATUS.AWS_ERROR
         @log "error in putting data to dynamo: #{err}"
       else
-        rc = 0
+        rc = STATUS.OK
 
     jres = { rc, err }
     @output res, jres
@@ -66,30 +75,35 @@ class Server
     id = req.params.id
     outdat = null
     cv = @_cache[id]
-    err = null
+    e_str = null
+    rc = STATUS.OK
+
+    err = (x) =>
+      @log x
+      e_str = x
     
     if not cv
-      console.log "Fetching item for #{id}"
-      item = @db().get(id)
-      console.log "Item: #{JSON.stringify item}"
-      await item.fetch defer err, dydat
-      if err
-        @log "error in fetching from dynamo: #{err}"
+      await @table().get({key : id}).fetch defer dyerr, dydat
+      if dyerr
+        err "error in fetching from dynamo: #{dyerr}"
+        rc = STATUS.AWS_ERROR
+      else if not dydat?
+        err "no entry found for key '#{id}'"
+        rc = STATUS.NOT_FOUND
       else if not (data = dydat.data)?
-        @log "Data element does not have data: #{JSON.stringify dydat}"
+        err "Data element does not have data: #{JSON.stringify dydat}"
+        rc = STATUS.BAD_DATA
       else
         outdat = data
         @_cache[id] = cv
     else
       outdat = cv
 
-    jres = {}
+    jres = { rc }
     if outdat
-      jres.rc = 0
       jres.data = outdat
     else
-      jres.rc = 1
-      jres.err = err if err
+      jres.err = e_str if e_str
 
     @output res, jres
 
