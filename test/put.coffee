@@ -7,11 +7,11 @@ argv = require('optimist').argv
 key = argv.k or argv.key or "footimebizzle"
 
 data =
-  "foo.com" :
+  "foo2.com" :
     security : 7
     length : 12
     symbs : 0
-  "bizzle.com" :
+  "bizzle2.com" :
     security : 8
     length : 16
     symbs : 1

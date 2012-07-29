@@ -67,7 +67,8 @@ class Server
         
     if rc is STATUS.OK
       @_cache[key] = data
-      args = { key, rawdata }
+      data = rawdata
+      args = { key, data }
       await @table().put(args).save defer dyerr, dydata
       if dyerr
         err = "Error in PUT do dynamo: #{dyerr}"
