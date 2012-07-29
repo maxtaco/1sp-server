@@ -10,6 +10,7 @@ STATUS =
   AWS_ERROR : 2
   BAD_DATA : 3
   BAD_INPUT : 4
+  BAD_JSON : 5
 
 # =======================================================================
 
@@ -46,25 +47,36 @@ class Server
   
   handlePost : (req, res) ->
     key = req.params.id
-    data = req.body.data
     err = null
     rc = STATUS.OK
-    
-    if not key? or not val?
-      err = "need 'id' and 'val' keys"
+    data = null
+
+    rawdata = req.body.data
+    if not key? or not rawdata?
+      err = "need 'id' and 'data' keys"
       rc = STATUS.BAD_INPUT
     else if key.length < 12
       err = "needed a key of sufficient length"
       rc = STATUS.BAD_INPUT
     else
+      try 
+        data = JSON.parse rawdata
+      catch e
+        rc = STATUS.BAD_JSON
+        err = "Bad json string as input: #{rawdata}"
+        
+    if rc is STATUS.OK
       @_cache[key] = data
-      await
-        @_db.get(@_tab).put({key : id, data : data}).save defer err, data
-      if err
+      args = { key, rawdata }
+      await @table().put(args).save defer dyerr, dydata
+      if dyerr
+        err = "Error in PUT do dynamo: #{dyerr}"
         rc = STATUS.AWS_ERROR
-        @log "error in putting data to dynamo: #{err}"
       else
         rc = STATUS.OK
+
+    if err?
+      @log "Error in handlePut: #{err}"
 
     jres = { rc, err }
     @output res, jres
@@ -116,6 +128,7 @@ server = new Server()
 # =======================================================================
 
 app = express.createServer()
+app.use express.bodyParser()
 
 app.get "/:id",  (req,res) -> server.handleGet  req, res
 app.post "/:id", (req,res) -> server.handlePost req, res
