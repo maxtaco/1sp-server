@@ -2,7 +2,7 @@ express = require "express"
 argv = require('optimist').argv
 dynamo = require 'dynamo'
 validator = require 'validator'
-lock = require 'lib/lock'
+lock = require './lib/lock'
 
 # =======================================================================
 
@@ -19,7 +19,10 @@ STATUS =
 
 is_email_valid = (em) -> validator.check(em).len(4,128).isEmail()
 is_pw_valid = (pw) -> validator.check(pw).is(/^[a-zA-Z0-9]+$/).len(8,20)
-unix_time = () -> Math.floor ((new Date ()).getTime() / 1000);
+
+unix_time = () ->
+  d = new Date
+  Math.floor d.getTime() / 1000
 
 # =======================================================================
 
@@ -31,7 +34,7 @@ class CacheObj
   WAIT : 20
 
   constructor : (@_key) ->
-    @_lock = new Lock { locked : true }
+    @_lock = new lock.Lock { locked : true }
     @_payload = null
     @_pw = null
     @_attempts = []
@@ -71,7 +74,7 @@ class CacheObj
   check_pw : (pw) -> @_pw is pw
 
   add_password_attempt : (pw) ->
-    if not _attempt_map[pw]?
+    if not @_attempt_map[pw]?
       @_attempts.push { time: unix_time(), pw }
 
   export : () -> JSON.stringify { pw : @_pw, payload:  @_payload }
@@ -182,7 +185,7 @@ class Server
     if not cobj?
       cobj = new CacheObj key
       @_cache[key] = cobj
-      await @table().get({key : id}).fetch defer dyerr, dydat
+      await @table().get({key}).fetch defer dyerr, dydat
       if dyerr
         err = "error in fetching from dynamo: #{dyerr}"
         rc = STATUS.AWS_ERROR
